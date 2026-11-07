@@ -1,0 +1,67 @@
+[
+  {
+    "id": "tab_traffic",
+    "type": "tab",
+    "label": "Smart Traffic Processing",
+    "disabled": false,
+    "info": "Step 1: receive sensor data. Processing nodes are added in later steps."
+  },
+  {
+    "id": "broker_mosquitto",
+    "type": "mqtt-broker",
+    "name": "Mosquitto",
+    "broker": "${MQTT_HOST}",
+    "port": "1883",
+    "clientid": "node-red-traffic",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "traffic/status/node-red",
+    "birthQos": "0",
+    "birthRetain": "true",
+    "birthPayload": "{\"online\":true}",
+    "closeTopic": "",
+    "willTopic": "traffic/status/node-red",
+    "willQos": "0",
+    "willRetain": "true",
+    "willPayload": "{\"online\":false}"
+  },
+  {
+    "id": "mqtt_in_sensors",
+    "type": "mqtt in",
+    "z": "tab_traffic",
+    "name": "traffic/sensors/+",
+    "topic": "traffic/sensors/+",
+    "qos": "0",
+    "datatype": "json",
+    "broker": "broker_mosquitto",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "dbg_sensors"
+      ]
+    ]
+  },
+  {
+    "id": "dbg_sensors",
+    "type": "debug",
+    "z": "tab_traffic",
+    "name": "Sensor readings",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload",
+    "statusVal": "payload.intersectionId",
+    "statusType": "msg",
+    "x": 400,
+    "y": 100,
+    "wires": []
+  }
+]

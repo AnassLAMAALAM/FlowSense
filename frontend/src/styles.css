@@ -1,0 +1,11 @@
+:root { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #0b0b0b; background: #f9f9f7; }
+body { margin: 0; }
+main { max-width: 640px; margin: 48px auto; padding: 0 16px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.muted { color: #898781; font-size: 13px; }
+.card { background: #fcfcfb; border: 1px solid rgba(11,11,11,.1); border-radius: 10px; padding: 8px 16px; margin-top: 20px; }
+.status { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #e1e0d9; }
+.status:last-child { border-bottom: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.dot.on { background: #0ca30c; }
+.dot.off { background: #c3c2b7; }

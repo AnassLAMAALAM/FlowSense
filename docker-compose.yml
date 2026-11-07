@@ -1,0 +1,76 @@
+name: smart-traffic
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # MQTT over WebSockets
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      PORT: 4000
+      MONGO_URL: mongodb://mongo:27017/smart_traffic
+      MQTT_URL: mqtt://mosquitto:1883
+      CORS_ORIGIN: "*"
+    ports:
+      - "4000:4000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+  node-red:
+    build: ./node-red
+    environment:
+      MQTT_HOST: mosquitto
+      TZ: Europe/Madrid
+    ports:
+      - "1880:1880"
+    depends_on:
+      - mosquitto
+      - backend
+    restart: unless-stopped
+
+  sensors:
+    build: ./sensors
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      INTERVAL_SEC: 5
+    depends_on:
+      - mosquitto
+      - node-red
+    restart: unless-stopped
+
+  dashboard:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mongo-data:
