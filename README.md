@@ -23,6 +23,7 @@ docker compose up -d --build      :: or double-click start.bat (output saved to 
 | **Dashboard** | http://localhost:8080 |
 | Node-RED editor | http://localhost:1880 |
 | Backend API | http://localhost:4000/api/health |
+| **API docs (Swagger)** | http://localhost:4000/api/docs — also http://localhost:8080/api/docs |
 | MQTT broker | `localhost:1883` (WebSockets `9001`) |
 | MongoDB | `mongodb://localhost:27017/smart_traffic` |
 
@@ -135,6 +136,11 @@ Edit a file in `node-red/functions/`, then `node node-red/build-flows.js` and `d
 | PUT | `/api/signals/:id` | `{ "mode": "manual", "nsGreen": 45, "ewGreen": 30 }` or `{ "mode": "adaptive" }` |
 | GET | `/api/weather?hours=24` | current Jerez weather + history |
 | POST | `/api/weather/simulate` | demo: `clear`, `cloudy`, `rain`, `heavy_rain`, `fog`, `storm` |
+
+**Swagger / OpenAPI:** interactive documentation at **http://localhost:4000/api/docs** — every endpoint with its
+parameters, request/response schemas and a *Try it out* button. Raw spec: `/api/openapi.json` (source: `backend/src/openapi.js`).
+
+![Swagger](docs/screenshots/7-swagger.png)
 
 **WebSocket (Socket.IO) events:** `traffic:update`, `alert:new`, `alert:updated`, `signal:update`, `emergency`,
 `weather:update`, `system:status`.

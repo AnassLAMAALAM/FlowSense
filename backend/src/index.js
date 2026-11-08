@@ -12,6 +12,8 @@ const realtime = require('./realtime');
 const mqttClient = require('./mqttClient');
 const routes = require('./routes');
 const { seed } = require('./seed');
+const swaggerUi = require('swagger-ui-express');
+const openapi = require('./openapi');
 const weather = require('./services/weather');
 
 const app = express();
@@ -19,7 +21,11 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: config.corsOrigin }));
 app.use(express.json({ limit: '256kb' }));
 // log API calls except the high-frequency ingest endpoint
-app.use(morgan('tiny', { skip: (req) => req.originalUrl === '/api/ingest' }));
+app.use(morgan('tiny', { skip: (req) => req.originalUrl === '/api/ingest' || req.originalUrl.startsWith('/api/docs') }));
+
+// API documentation: interactive Swagger UI at /api/docs, raw OpenAPI spec at /api/openapi.json
+app.get('/api/openapi.json', (req, res) => res.json(openapi));
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapi, { customSiteTitle: 'FlowSense API' }));
 
 app.use('/api', routes);
 
