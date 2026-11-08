@@ -1,0 +1,395 @@
+[
+  {
+    "id": "tab_traffic",
+    "type": "tab",
+    "label": "FlowSense processing",
+    "disabled": false,
+    "info": "MQTT ingestion -> data validation -> traffic metrics & congestion detection -> adaptive signal timing (Webster) -> emergency priority -> publish signal plans, processed data and alerts -> forward to the backend (MongoDB + WebSocket)"
+  },
+  {
+    "id": "broker_mosquitto",
+    "type": "mqtt-broker",
+    "name": "Mosquitto",
+    "broker": "${MQTT_HOST}",
+    "port": "1883",
+    "clientid": "node-red-flowsense",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "traffic/status/node-red",
+    "birthQos": "0",
+    "birthRetain": "true",
+    "birthPayload": "{\"online\":true}",
+    "closeTopic": "",
+    "willTopic": "traffic/status/node-red",
+    "willQos": "0",
+    "willRetain": "true",
+    "willPayload": "{\"online\":false}"
+  },
+  {
+    "id": "c1",
+    "type": "comment",
+    "z": "tab_traffic",
+    "name": "1. MQTT ingestion + data validation (ST-5)",
+    "x": 200,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "mqtt_in_sensors",
+    "type": "mqtt in",
+    "z": "tab_traffic",
+    "name": "traffic/sensors/+",
+    "topic": "traffic/sensors/+",
+    "qos": "0",
+    "datatype": "json",
+    "broker": "broker_mosquitto",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 100,
+    "wires": [
+      [
+        "fn_validate"
+      ]
+    ]
+  },
+  {
+    "id": "fn_validate",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Data validation",
+    "func": "// Data Validation — reject malformed readings, clamp out-of-range values,\n// drop stale or duplicate messages.\nconst p = msg.payload;\nconst errors = [];\n\nif (!p || typeof p !== 'object') {\n    node.warn('Invalid payload (not JSON object)');\n    return [null, { payload: { reason: 'not-an-object', raw: msg.payload, topic: msg.topic } }];\n}\nif (typeof p.intersectionId !== 'string' || !/^INT-\\d{3}$/.test(p.intersectionId)) errors.push('intersectionId');\nif (!Array.isArray(p.approaches) || p.approaches.length === 0) errors.push('approaches');\nconst ts = Date.parse(p.timestamp);\nif (isNaN(ts)) errors.push('timestamp');\nelse if (Math.abs(Date.now() - ts) > 5 * 60 * 1000) errors.push('timestamp-stale');\n\nif (errors.length) {\n    return [null, { payload: { reason: 'invalid-fields', fields: errors, intersectionId: p.intersectionId, topic: msg.topic } }];\n}\n\n// duplicate / out-of-order protection per sensor\nconst seqKey = 'seq_' + p.intersectionId;\nconst lastSeq = context.get(seqKey) || 0;\nif (typeof p.seq === 'number' && p.seq <= lastSeq && p.seq > 5) {\n    return [null, { payload: { reason: 'duplicate-or-out-of-order', seq: p.seq, lastSeq, intersectionId: p.intersectionId } }];\n}\nif (typeof p.seq === 'number') context.set(seqKey, p.seq);\n\nconst clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Number(v) || 0));\nconst VALID_APPROACHES = ['N', 'S', 'E', 'W'];\nlet clamped = 0;\np.approaches = p.approaches\n    .filter(a => a && VALID_APPROACHES.includes(a.approach))\n    .map(a => {\n        const out = {\n            approach: a.approach,\n            vehicleCount: Math.round(clamp(a.vehicleCount, 0, 5000)),\n            avgSpeed: clamp(a.avgSpeed, 0, 200),\n            occupancy: clamp(a.occupancy, 0, 100),\n            queueLength: Math.round(clamp(a.queueLength, 0, 1000)),\n            incident: !!a.incident\n        };\n        if (out.vehicleCount !== a.vehicleCount || out.avgSpeed !== a.avgSpeed || out.occupancy !== a.occupancy) clamped++;\n        return out;\n    });\n\nif (p.approaches.length === 0) {\n    return [null, { payload: { reason: 'no-valid-approaches', intersectionId: p.intersectionId } }];\n}\n\np.lanes = clamp(p.lanes || 2, 1, 6);\np.freeFlowSpeed = clamp(p.freeFlowSpeed || 50, 20, 130);\np.intervalSec = clamp(p.intervalSec || 5, 1, 3600);\np.vehicles = Array.isArray(p.vehicles) ? p.vehicles : [];\np.emergency = p.emergency && p.emergency.detected ? p.emergency : { detected: false };\np.validation = { ok: true, clampedFields: clamped, receivedAt: new Date().toISOString() };\n\nmsg.payload = p;\nreturn [msg, null];\n",
+    "outputs": 2,
+    "noerr": 0,
+    "x": 360,
+    "y": 100,
+    "wires": [
+      [
+        "fn_process"
+      ],
+      [
+        "dbg_rejected"
+      ]
+    ]
+  },
+  {
+    "id": "dbg_rejected",
+    "type": "debug",
+    "z": "tab_traffic",
+    "name": "Rejected readings",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "complete": "payload",
+    "statusVal": "payload.reason",
+    "statusType": "msg",
+    "x": 590,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "c2",
+    "type": "comment",
+    "z": "tab_traffic",
+    "name": "2. Traffic metrics + congestion detection (ST-6)",
+    "x": 220,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "fn_process",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Metrics + congestion detection",
+    "func": "// Data Processing + Congestion Detection\n//   flow (veh/h)      = count * 3600 / interval\n//   density (veh/km/lane) = flow / speed / lanes   (fundamental diagram q = k * v)\n//   congestion score  = 0.45*occupancy + 0.35*speed loss + 0.20*queue pressure  (0..1)\nconst p = msg.payload;\nconst LEVELS = [\n    { level: 'free', max: 0.30 },\n    { level: 'moderate', max: 0.50 },\n    { level: 'heavy', max: 0.70 },\n    { level: 'severe', max: 1.01 }\n];\nconst levelOf = s => LEVELS.find(l => s < l.max).level;\nconst round = (v, d = 1) => Math.round(v * 10 ** d) / 10 ** d;\nconst queueCapacity = p.lanes * 120 / 6.5; // vehicles that fit in the detection zone\n\nlet totalCount = 0, totalFlow = 0, speedWeighted = 0, occSum = 0, queueSum = 0, maxScore = 0;\np.approaches = p.approaches.map(a => {\n    const flow = a.vehicleCount * 3600 / p.intervalSec;\n    const speed = Math.max(a.avgSpeed, 1);\n    const density = flow / speed / p.lanes;\n    const speedLoss = Math.max(0, 1 - a.avgSpeed / p.freeFlowSpeed);\n    const queuePressure = Math.min(1, a.queueLength / queueCapacity);\n    let score = 0.45 * (a.occupancy / 100) + 0.35 * speedLoss + 0.20 * queuePressure;\n    if (a.incident) score = Math.min(1, score + 0.1);\n    score = round(Math.min(1, score), 3);\n\n    totalCount += a.vehicleCount;\n    totalFlow += flow;\n    speedWeighted += a.avgSpeed * Math.max(a.vehicleCount, 1);\n    occSum += a.occupancy;\n    queueSum += a.queueLength;\n    maxScore = Math.max(maxScore, score);\n\n    return Object.assign({}, a, {\n        flowVph: Math.round(flow),\n        density: round(density),\n        congestionScore: score,\n        congestionLevel: levelOf(score)\n    });\n});\n\nconst weightSum = p.approaches.reduce((s, a) => s + Math.max(a.vehicleCount, 1), 0);\nconst avgScore = p.approaches.reduce((s, a) => s + a.congestionScore, 0) / p.approaches.length;\n// intersection score leans towards the worst approach\nconst interScore = round(0.6 * maxScore + 0.4 * avgScore, 3);\n\np.summary = {\n    vehicleCount: totalCount,\n    flowVph: Math.round(totalFlow),\n    avgSpeed: round(speedWeighted / weightSum),\n    avgOccupancy: round(occSum / p.approaches.length),\n    totalQueue: queueSum,\n    density: round(p.approaches.reduce((s, a) => s + a.density, 0) / p.approaches.length),\n    congestionScore: interScore,\n    congestionLevel: levelOf(interScore),\n    incidents: p.approaches.filter(a => a.incident).map(a => a.approach)\n};\n\n// Congestion alerting with hysteresis: alert when entering heavy/severe,\n// clear when back to free/moderate. Avoids an alert every 5 seconds.\nconst key = 'level_' + p.intersectionId;\nconst prev = context.get(key) || 'free';\nconst curr = p.summary.congestionLevel;\nconst rank = { free: 0, moderate: 1, heavy: 2, severe: 3 };\np.alerts = [];\nif (rank[curr] >= 2 && rank[curr] > rank[prev]) {\n    p.alerts.push({\n        type: 'congestion',\n        severity: curr === 'severe' ? 'critical' : 'warning',\n        message: `${curr === 'severe' ? 'Severe' : 'Heavy'} congestion at ${p.intersectionId} (score ${interScore}, avg speed ${p.summary.avgSpeed} km/h)`\n    });\n} else if (rank[curr] <= 1 && rank[prev] >= 2) {\n    p.alerts.push({ type: 'congestion_cleared', severity: 'info', message: `Congestion cleared at ${p.intersectionId}` });\n}\ncontext.set(key, curr);\n\n// incident alert (once per incident start)\nconst incKey = 'inc_' + p.intersectionId;\nconst prevInc = context.get(incKey) || [];\np.summary.incidents.filter(a => !prevInc.includes(a)).forEach(a => {\n    p.alerts.push({ type: 'incident', severity: 'warning', message: `Possible incident on approach ${a} at ${p.intersectionId} (capacity drop detected)` });\n});\ncontext.set(incKey, p.summary.incidents);\n\nmsg.payload = p;\nreturn msg;\n",
+    "outputs": 1,
+    "x": 220,
+    "y": 260,
+    "wires": [
+      [
+        "fn_signal"
+      ]
+    ]
+  },
+  {
+    "id": "c4",
+    "type": "comment",
+    "z": "tab_traffic",
+    "name": "3. Adaptive signals (ST-7) + emergency priority (ST-8)",
+    "x": 640,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "fn_signal",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Signal optimization (Webster)",
+    "func": "// Signal Optimization (Webster's method) + manual override handling.\n// Two-phase control: NS phase (approaches N,S) and EW phase (approaches E,W).\n//   y_i = critical flow / saturation flow   (critical = busier approach in the phase, incl. queue)\n//   C0  = (1.5 L + 5) / (1 - Y),  L = lost time per cycle, Y = sum(y_i)\n//   g_i = (C0 - L) * y_i / Y\nconst p = msg.payload;\nconst SAT_FLOW = 1800;          // veh/h/lane\nconst LOST_PER_PHASE = 4;       // s (start-up + clearance)\nconst YELLOW = 3, ALL_RED = 2;\nconst MIN_GREEN = 10, MIN_CYCLE = 40, MAX_CYCLE = 150;\nconst round = v => Math.round(v);\n\nconst byApproach = {};\np.approaches.forEach(a => { byApproach[a.approach] = a; });\n// demand = measured flow + queued vehicles that need to clear within ~ one cycle (90 s)\nconst demand = a => a ? a.flowVph + a.queueLength * 3600 / 90 : 0;\nconst nsCrit = Math.max(demand(byApproach.N), demand(byApproach.S));\nconst ewCrit = Math.max(demand(byApproach.E), demand(byApproach.W));\nconst cap = SAT_FLOW * p.lanes;\nlet yNS = Math.max(0.05, nsCrit / cap);\nlet yEW = Math.max(0.05, ewCrit / cap);\nlet Y = yNS + yEW;\nconst L = 2 * LOST_PER_PHASE;\nif (Y > 0.9) { yNS = yNS / Y * 0.9; yEW = yEW / Y * 0.9; Y = 0.9; } // oversaturated: cap\n\nlet cycle = Math.min(MAX_CYCLE, Math.max(MIN_CYCLE, (1.5 * L + 5) / (1 - Y)));\nlet effGreen = cycle - L;\nlet nsGreen = Math.max(MIN_GREEN, effGreen * yNS / Y);\nlet ewGreen = Math.max(MIN_GREEN, effGreen * yEW / Y);\ncycle = nsGreen + ewGreen + L;\n\n// smooth changes so the plan doesn't jump every 5 s (exponential smoothing)\nconst key = 'plan_' + p.intersectionId;\nconst prev = context.get(key);\nif (prev) {\n    const a = 0.3;\n    nsGreen = prev.nsGreen + a * (nsGreen - prev.nsGreen);\n    ewGreen = prev.ewGreen + a * (ewGreen - prev.ewGreen);\n    cycle = nsGreen + ewGreen + L;\n}\n\nlet plan = {\n    intersectionId: p.intersectionId,\n    mode: 'adaptive',\n    cycleLength: round(cycle),\n    nsGreen: round(nsGreen),\n    ewGreen: round(ewGreen),\n    yellow: YELLOW,\n    allRed: ALL_RED,\n    preemptApproach: null,\n    reason: 'webster',\n    flowRatio: { ns: Math.round(yNS * 1000) / 1000, ew: Math.round(yEW * 1000) / 1000 }\n};\ncontext.set(key, { nsGreen, ewGreen });\n\n// manual override (set from the dashboard via traffic/control/<id>)\nconst overrides = flow.get('overrides') || {};\nconst ov = overrides[p.intersectionId];\nif (ov && ov.mode === 'manual') {\n    plan = Object.assign(plan, {\n        mode: 'manual',\n        nsGreen: ov.nsGreen,\n        ewGreen: ov.ewGreen,\n        cycleLength: ov.nsGreen + ov.ewGreen + L,\n        reason: 'manual-override'\n    });\n}\n\n// detect significant plan change -> persist in signal history\nconst lastSent = context.get('sent_' + p.intersectionId);\nplan.changed = !lastSent || lastSent.mode !== plan.mode ||\n    Math.abs(lastSent.nsGreen - plan.nsGreen) >= 3 || Math.abs(lastSent.ewGreen - plan.ewGreen) >= 3;\nif (plan.changed) context.set('sent_' + p.intersectionId, { mode: plan.mode, nsGreen: plan.nsGreen, ewGreen: plan.ewGreen });\n\np.signal = plan;\nmsg.payload = p;\nreturn msg;\n",
+    "outputs": 1,
+    "x": 520,
+    "y": 260,
+    "wires": [
+      [
+        "fn_emergency"
+      ]
+    ]
+  },
+  {
+    "id": "fn_emergency",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Emergency priority",
+    "func": "// Emergency Detection — pre-empt the signal to give green to the emergency\n// vehicle's approach, raise a critical alert once per vehicle, and restore\n// normal operation when the vehicle has passed.\nconst p = msg.payload;\nconst e = p.emergency;\nconst key = 'ev_' + p.intersectionId;\nconst active = context.get(key);\n\nif (e && e.detected) {\n    const phase = (e.approach === 'N' || e.approach === 'S') ? 'NS' : 'EW';\n    p.signal = Object.assign({}, p.signal, {\n        mode: 'emergency',\n        preemptApproach: e.approach,\n        nsGreen: phase === 'NS' ? 60 : 0,\n        ewGreen: phase === 'EW' ? 60 : 0,\n        cycleLength: 60 + 8,\n        reason: `emergency-preemption:${e.type}`,\n        changed: !active || active.vehicleId !== e.vehicleId\n    });\n    p.priority = 'high';\n    if (!active || active.vehicleId !== e.vehicleId) {\n        p.alerts = (p.alerts || []).concat([{\n            type: 'emergency',\n            severity: 'critical',\n            message: `${e.type.replace('_', ' ')} ${e.vehicleId} approaching ${p.intersectionId} from ${e.approach} — signal pre-empted (${phase} green)`\n        }]);\n        context.set(key, { vehicleId: e.vehicleId, since: Date.now() });\n    }\n} else if (active) {\n    p.alerts = (p.alerts || []).concat([{\n        type: 'emergency_cleared',\n        severity: 'info',\n        message: `Emergency vehicle ${active.vehicleId} cleared ${p.intersectionId} — resuming ${p.signal.mode} control`\n    }]);\n    p.signal.changed = true;\n    context.set(key, null);\n}\n\n// Output 1: full processed record -> backend\n// Output 2: signal plan -> MQTT traffic/signals/<id> (retained)\nconst signalMsg = { topic: 'traffic/signals/' + p.intersectionId, payload: p.signal, retain: true, qos: 1 };\nmsg.payload = p;\nreturn [msg, signalMsg];\n",
+    "outputs": 2,
+    "x": 780,
+    "y": 260,
+    "wires": [
+      [
+        "fn_publish",
+        "fn_route"
+      ],
+      [
+        "mqtt_out_signals",
+        "dbg_signals"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out_signals",
+    "type": "mqtt out",
+    "z": "tab_traffic",
+    "name": "traffic/signals/<id>",
+    "topic": "",
+    "qos": "",
+    "retain": "",
+    "broker": "broker_mosquitto",
+    "x": 1020,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "dbg_signals",
+    "type": "debug",
+    "z": "tab_traffic",
+    "name": "Signal plans",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload",
+    "statusVal": "payload.mode",
+    "statusType": "msg",
+    "x": 1000,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "c3",
+    "type": "comment",
+    "z": "tab_traffic",
+    "name": "4. Publish processed data and alerts",
+    "x": 190,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "fn_publish",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Publish results",
+    "func": "// Publish results on MQTT\n//   output 1: processed record -> traffic/processed/<intersectionId>\n//   output 2: one message per alert -> traffic/alerts/<intersectionId>\nconst p = msg.payload;\nconst id = p.intersectionId;\n\nconst processed = {\n    topic: 'traffic/processed/' + id,\n    payload: p,\n    qos: 0,\n    retain: true          // latest state per intersection is always available\n};\n\nconst alerts = (p.alerts || []).map(a => ({\n    topic: 'traffic/alerts/' + id,\n    payload: Object.assign({ intersectionId: id, timestamp: p.timestamp }, a),\n    qos: 1,\n    retain: false\n}));\n\nconst stats = flow.get('stats') || { processed: 0, alerts: 0 };\nstats.processed++;\nstats.alerts += alerts.length;\nflow.set('stats', stats);\nnode.status({ fill: 'green', shape: 'dot', text: `${stats.processed} processed · ${stats.alerts} alerts` });\n\nreturn [processed, alerts];\n",
+    "outputs": 2,
+    "x": 180,
+    "y": 400,
+    "wires": [
+      [
+        "mqtt_out",
+        "dbg_processed"
+      ],
+      [
+        "mqtt_out",
+        "dbg_alerts"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out",
+    "type": "mqtt out",
+    "z": "tab_traffic",
+    "name": "traffic/processed|alerts/<id>",
+    "topic": "",
+    "qos": "",
+    "retain": "",
+    "broker": "broker_mosquitto",
+    "x": 460,
+    "y": 380,
+    "wires": []
+  },
+  {
+    "id": "dbg_processed",
+    "type": "debug",
+    "z": "tab_traffic",
+    "name": "Processed (summary)",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload.summary",
+    "statusVal": "payload.summary.congestionLevel",
+    "statusType": "msg",
+    "x": 460,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "dbg_alerts",
+    "type": "debug",
+    "z": "tab_traffic",
+    "name": "Alerts",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "complete": "payload",
+    "statusVal": "payload.message",
+    "statusType": "msg",
+    "x": 430,
+    "y": 460,
+    "wires": []
+  },
+  {
+    "id": "c5",
+    "type": "comment",
+    "z": "tab_traffic",
+    "name": "5. Backend routing (ST-10)",
+    "x": 690,
+    "y": 340,
+    "wires": []
+  },
+  {
+    "id": "fn_route",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Backend routing",
+    "func": "// Backend Routing — forward the processed record to the Node.js backend.\nconst base = env.get('BACKEND_URL') || 'http://backend:4000';\nmsg.url = base + '/api/ingest';\nmsg.method = 'POST';\nmsg.headers = {\n    'content-type': 'application/json',\n    'x-ingest-token': env.get('INGEST_TOKEN') || 'dev-ingest-token'\n};\nconst stats = flow.get('stats') || { processed: 0 };\nstats.processed++;\nflow.set('stats', stats);\nnode.status({ fill: 'green', shape: 'dot', text: `forwarded ${stats.processed}` });\nreturn msg;\n",
+    "outputs": 1,
+    "x": 660,
+    "y": 400,
+    "wires": [
+      [
+        "http_backend"
+      ]
+    ]
+  },
+  {
+    "id": "http_backend",
+    "type": "http request",
+    "z": "tab_traffic",
+    "name": "POST /api/ingest",
+    "method": "use",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": true,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 860,
+    "y": 400,
+    "wires": [
+      [
+        "fn_http_status"
+      ]
+    ]
+  },
+  {
+    "id": "fn_http_status",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Check backend response",
+    "func": "if (msg.statusCode >= 300 || msg.statusCode === undefined) {\n  node.status({ fill: 'red', shape: 'ring', text: 'backend ' + (msg.statusCode || 'unreachable') });\n  node.warn('Backend rejected ingest: ' + (msg.statusCode || 'unreachable') + ' ' + JSON.stringify(msg.payload));\n} else {\n  node.status({ fill: 'green', shape: 'dot', text: 'backend ok' });\n}\nreturn null;",
+    "outputs": 1,
+    "x": 1070,
+    "y": 400,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "c6",
+    "type": "comment",
+    "z": "tab_traffic",
+    "name": "6. Manual signal control from the dashboard (ST-12)",
+    "x": 230,
+    "y": 600,
+    "wires": []
+  },
+  {
+    "id": "mqtt_in_control",
+    "type": "mqtt in",
+    "z": "tab_traffic",
+    "name": "traffic/control/+",
+    "topic": "traffic/control/+",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "broker_mosquitto",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 140,
+    "y": 660,
+    "wires": [
+      [
+        "fn_control"
+      ]
+    ]
+  },
+  {
+    "id": "fn_control",
+    "type": "function",
+    "z": "tab_traffic",
+    "name": "Apply manual override",
+    "func": "// Manual control commands from the dashboard (published by the backend on\n// traffic/control/<intersectionId>). Stored in flow context and applied by the\n// Signal Optimization node on the next reading.\nconst c = msg.payload || {};\nconst id = (msg.topic || '').split('/').pop();\nif (!/^INT-\\d{3}$/.test(id)) return null;\nconst overrides = flow.get('overrides') || {};\nif (c.mode === 'manual') {\n    const g = v => Math.min(120, Math.max(10, Math.round(Number(v) || 0)));\n    overrides[id] = { mode: 'manual', nsGreen: g(c.nsGreen), ewGreen: g(c.ewGreen), at: Date.now() };\n} else {\n    delete overrides[id];\n}\nflow.set('overrides', overrides);\nnode.status({ fill: Object.keys(overrides).length ? 'yellow' : 'green', shape: 'dot', text: `${Object.keys(overrides).length} manual override(s)` });\nreturn null;\n",
+    "outputs": 1,
+    "x": 380,
+    "y": 660,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "catch_all",
+    "type": "catch",
+    "z": "tab_traffic",
+    "name": "Errors",
+    "scope": null,
+    "uncaught": false,
+    "x": 120,
+    "y": 740,
+    "wires": [
+      [
+        "dbg_errors"
+      ]
+    ]
+  },
+  {
+    "id": "dbg_errors",
+    "type": "debug",
+    "z": "tab_traffic",
+    "name": "Flow errors",
+    "active": true,
+    "tosidebar": true,
+    "console": true,
+    "complete": "error",
+    "x": 300,
+    "y": 740,
+    "wires": []
+  }
+]

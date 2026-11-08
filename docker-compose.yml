@@ -1,0 +1,89 @@
+name: smart-traffic
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # MQTT over WebSockets
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      PORT: 4000
+      MONGO_URL: mongodb://mongo:27017/smart_traffic
+      MQTT_URL: mqtt://mosquitto:1883
+      CORS_ORIGIN: "*"
+      INGEST_TOKEN: ${INGEST_TOKEN:-dev-ingest-token}   # shared secret between Node-RED and the backend
+      WEATHER_ENABLED: "true"           # live weather from Open-Meteo (free, no key)
+      WEATHER_CITY: Jerez de la Frontera
+      WEATHER_LAT: "36.6866"
+      WEATHER_LON: "-6.1372"
+      WEATHER_INTERVAL_MIN: "10"
+    ports:
+      - "4000:4000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+
+  node-red:
+    build: ./node-red
+    environment:
+      MQTT_HOST: mosquitto
+      BACKEND_URL: http://backend:4000
+      INGEST_TOKEN: ${INGEST_TOKEN:-dev-ingest-token}
+      TZ: Europe/Madrid
+    ports:
+      - "1880:1880"
+    depends_on:
+      - mosquitto
+      - backend
+    restart: unless-stopped
+
+  sensors:
+    build: ./sensors
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      INTERVAL_SEC: 5          # real seconds between readings
+      SIM_TIME_SCALE: 60       # 1 real second = 1 simulated minute -> a full day in 24 minutes
+      # START_HOUR: 7.5        # optional: start the simulated clock at 07:30 (just before rush hour)
+      EMERGENCY_PROB: 0.01     # chance per intersection per reading of an emergency vehicle
+      INCIDENT_PROB: 0.0015    # chance per approach per reading of an incident
+      WEATHER: clear           # clear | rain | heavy_rain | fog | storm (live weather replaces it later)
+    depends_on:
+      - mosquitto
+      - node-red
+    restart: unless-stopped
+
+  dashboard:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mongo-data:
