@@ -19,9 +19,10 @@ services:
       - mongo-data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+      interval: 15s       # check every 15 s
+      timeout: 20s        # mongosh can be slow while the PC is busy (e.g. during builds)
+      retries: 10
+      start_period: 60s   # failures during start-up don't count
     restart: unless-stopped
 
   backend:
