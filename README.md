@@ -10,6 +10,24 @@ account, and shows everything on a control-room dashboard.
 
 ---
 
+## Academic context
+
+| | |
+|---|---|
+| **Programme** | Máster Universitario en Investigación en Ingeniería de Sistemas y de la Computación (MUIISC) — research master in computer and systems engineering |
+| **University** | Universidad de Cádiz (UCA) — Escuela Superior de Ingeniería (ESI) |
+| **Itinerary** | *Transformación Digital: Internet de las Cosas y Big Data* |
+| **Course** | Internet de las cosas (Internet of Things) — practical assignment |
+| **Student** | Anass Lamaalam |
+| **Academic year** | 2026–2027 |
+
+The master is a one-year official research master (60 ECTS): a common module (R&D projects, research
+methodology), a specialisation itinerary and a master's thesis (TFM). FlowSense is the practical work for the IoT
+course and applies its main topics end to end: sensing devices, an MQTT publish/subscribe broker, edge processing,
+a cloud-style backend with storage, real-time visualisation and the evaluation of an adaptive control algorithm.
+
+---
+
 ## Quick start
 
 Requirement: **Docker Desktop** running. Nothing else to install.
