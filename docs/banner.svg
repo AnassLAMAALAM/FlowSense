@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-label="FlowSense — Smart Traffic Management System">
+  <!-- Colours taken from the dashboard theme (frontend/src/styles.css, frontend/src/theme.js) -->
+  <rect width="1200" height="260" rx="14" fill="#0f1115"/>
+  <rect x="1" y="1" width="1198" height="258" rx="13" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+
+  <!-- road grid -->
+  <g stroke="#2a2e36" stroke-width="10" stroke-linecap="round">
+    <line x1="760" y1="70" x2="1150" y2="70"/>
+    <line x1="760" y1="190" x2="1150" y2="190"/>
+    <line x1="820" y1="30" x2="820" y2="230"/>
+    <line x1="955" y1="30" x2="955" y2="230"/>
+    <line x1="1090" y1="30" x2="1090" y2="230"/>
+  </g>
+  <g stroke="#3987e5" stroke-width="3" stroke-opacity="0.55" stroke-dasharray="6 10">
+    <line x1="760" y1="70" x2="1150" y2="70"/>
+    <line x1="955" y1="30" x2="955" y2="230"/>
+  </g>
+  <!-- six intersections, coloured by congestion level -->
+  <g stroke="#0f1115" stroke-width="4">
+    <circle cx="820" cy="70" r="13" fill="#0ca30c"/>
+    <circle cx="955" cy="70" r="13" fill="#fab219"/>
+    <circle cx="1090" cy="70" r="13" fill="#0ca30c"/>
+    <circle cx="820" cy="190" r="13" fill="#ec835a"/>
+    <circle cx="955" cy="190" r="13" fill="#d03b3b"/>
+    <circle cx="1090" cy="190" r="13" fill="#0ca30c"/>
+  </g>
+
+  <!-- brand: traffic lamp -->
+  <rect x="56" y="62" width="40" height="104" rx="10" fill="#222222"/>
+  <circle cx="76" cy="86" r="11" fill="#d03b3b"/>
+  <circle cx="76" cy="114" r="11" fill="#fab219"/>
+  <circle cx="76" cy="142" r="11" fill="#0ca30c"/>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+    <text x="124" y="112" font-size="52" font-weight="600" fill="#f0efec">FlowSense</text>
+    <text x="126" y="148" font-size="21" fill="#c3c2b7">Smart Traffic Management System · IoT</text>
+    <text x="126" y="176" font-size="16" fill="#8d8c86">Real-time monitoring and adaptive signals for Jerez de la Frontera</text>
+
+    <!-- congestion legend, same icons and labels as the dashboard -->
+    <g font-size="14" fill="#c3c2b7">
+      <rect x="124" y="198" width="104" height="28" rx="14" fill="#181b21" stroke="#ffffff" stroke-opacity="0.08"/>
+      <text x="138" y="217"><tspan fill="#0ca30c">●</tspan> Free flow</text>
+      <rect x="238" y="198" width="104" height="28" rx="14" fill="#181b21" stroke="#ffffff" stroke-opacity="0.08"/>
+      <text x="252" y="217"><tspan fill="#fab219">▲</tspan> Moderate</text>
+      <rect x="352" y="198" width="80" height="28" rx="14" fill="#181b21" stroke="#ffffff" stroke-opacity="0.08"/>
+      <text x="366" y="217"><tspan fill="#ec835a">◆</tspan> Heavy</text>
+      <rect x="442" y="198" width="84" height="28" rx="14" fill="#181b21" stroke="#ffffff" stroke-opacity="0.08"/>
+      <text x="456" y="217"><tspan fill="#d03b3b">■</tspan> Severe</text>
+    </g>
+  </g>
+</svg>
