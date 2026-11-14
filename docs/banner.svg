@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-label="FlowSense — Urban mobility OS">
+  <!-- Colours from the FlowSense 2.0 dashboard theme (frontend/src/styles.css) and theme.js -->
+  <defs>
+    <radialGradient id="glow" cx="72%" cy="-10%" r="60%">
+      <stop offset="0" stop-color="#35a7ff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#35a7ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="logo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b8fe8"/>
+      <stop offset="1" stop-color="#36d4ba"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="260" rx="16" fill="#080d16"/>
+  <rect width="1200" height="260" rx="16" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="1199" height="259" rx="15.5" fill="none" stroke="#94a3b8" stroke-opacity="0.13"/>
+
+  <!-- road grid: 2 streets x 3 avenues -->
+  <g stroke="#172231" stroke-width="12" stroke-linecap="round">
+    <line x1="760" y1="70" x2="1150" y2="70"/>
+    <line x1="760" y1="190" x2="1150" y2="190"/>
+    <line x1="820" y1="30" x2="820" y2="230"/>
+    <line x1="955" y1="30" x2="955" y2="230"/>
+    <line x1="1090" y1="30" x2="1090" y2="230"/>
+  </g>
+  <g stroke="#35a7ff" stroke-width="3" stroke-opacity="0.6" stroke-dasharray="6 10">
+    <line x1="760" y1="70" x2="1150" y2="70"/>
+    <line x1="955" y1="30" x2="955" y2="230"/>
+  </g>
+  <!-- six intersections coloured by congestion level -->
+  <g stroke="#080d16" stroke-width="4">
+    <circle cx="820" cy="70" r="13" fill="#0ca30c"/>
+    <circle cx="955" cy="70" r="13" fill="#fab219"/>
+    <circle cx="1090" cy="70" r="13" fill="#0ca30c"/>
+    <circle cx="820" cy="190" r="13" fill="#ec835a"/>
+    <circle cx="955" cy="190" r="17" fill="#d03b3b"/>
+    <circle cx="1090" cy="190" r="13" fill="#0ca30c"/>
+  </g>
+
+  <!-- logo: same mark as the dashboard sidebar -->
+  <rect x="56" y="58" width="72" height="72" rx="22" fill="url(#logo)"/>
+  <g fill="#ffffff" fill-opacity="0.95">
+    <rect x="72" y="96" width="11" height="18" rx="4"/>
+    <rect x="86.5" y="74" width="11" height="40" rx="4"/>
+    <rect x="101" y="86" width="11" height="28" rx="4"/>
+  </g>
+
+  <g font-family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif">
+    <text x="150" y="106" font-size="50" font-weight="600" fill="#f5f8fc" letter-spacing="-1">FlowSense</text>
+    <text x="152" y="132" font-size="15" fill="#718097" letter-spacing="1">URBAN MOBILITY OS</text>
+    <text x="58" y="172" font-size="20" fill="#b8c4d4">Smart traffic management for Jerez de la Frontera · IoT</text>
+
+    <!-- congestion legend: same icons and labels as the dashboard -->
+    <g font-size="14" fill="#b8c4d4">
+      <rect x="58" y="196" width="104" height="30" rx="15" fill="#101824" stroke="#94a3b8" stroke-opacity="0.13"/>
+      <text x="72" y="216"><tspan fill="#0ca30c">●</tspan> Free flow</text>
+      <rect x="172" y="196" width="104" height="30" rx="15" fill="#101824" stroke="#94a3b8" stroke-opacity="0.13"/>
+      <text x="186" y="216"><tspan fill="#fab219">▲</tspan> Moderate</text>
+      <rect x="286" y="196" width="80" height="30" rx="15" fill="#101824" stroke="#94a3b8" stroke-opacity="0.13"/>
+      <text x="300" y="216"><tspan fill="#ec835a">◆</tspan> Heavy</text>
+      <rect x="376" y="196" width="84" height="30" rx="15" fill="#101824" stroke="#94a3b8" stroke-opacity="0.13"/>
+      <text x="390" y="216"><tspan fill="#d03b3b">■</tspan> Severe</text>
+    </g>
+  </g>
+</svg>
