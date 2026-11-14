@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <img alt="Python" src="https://img.shields.io/badge/sensors-Python-3987e5?style=flat-square">
-  <img alt="MQTT" src="https://img.shields.io/badge/broker-MQTT%20%C2%B7%20Mosquitto-3987e5?style=flat-square">
-  <img alt="Node-RED" src="https://img.shields.io/badge/edge-Node--RED-d95926?style=flat-square">
-  <img alt="Node.js" src="https://img.shields.io/badge/API-Node.js%20%C2%B7%20Express-199e70?style=flat-square">
-  <img alt="MongoDB" src="https://img.shields.io/badge/storage-MongoDB-199e70?style=flat-square">
-  <img alt="React" src="https://img.shields.io/badge/dashboard-React%20%C2%B7%20Vite-3987e5?style=flat-square">
-  <img alt="Docker" src="https://img.shields.io/badge/run-Docker%20Compose-20242c?style=flat-square">
+  <img alt="Python" src="https://img.shields.io/badge/sensors-Python-35a7ff?style=flat-square">
+  <img alt="MQTT" src="https://img.shields.io/badge/broker-MQTT%20%C2%B7%20Mosquitto-35a7ff?style=flat-square">
+  <img alt="Node-RED" src="https://img.shields.io/badge/edge-Node--RED-ff8a5b?style=flat-square">
+  <img alt="Node.js" src="https://img.shields.io/badge/API-Node.js%20%C2%B7%20Express-35d09f?style=flat-square">
+  <img alt="MongoDB" src="https://img.shields.io/badge/storage-MongoDB-35d09f?style=flat-square">
+  <img alt="React" src="https://img.shields.io/badge/dashboard-React%20%C2%B7%20Vite-35a7ff?style=flat-square">
+  <img alt="Docker" src="https://img.shields.io/badge/run-Docker%20Compose-172231?style=flat-square">
 </p>
 
 <p align="center">
@@ -97,11 +97,11 @@ flowchart TB
     B -. "traffic/control/&lt;id&gt;" .-> M
     B -. "traffic/weather" .-> M
 
-    classDef device fill:#181b21,stroke:#0ca30c,color:#f0efec
-    classDef broker fill:#181b21,stroke:#fab219,color:#f0efec
-    classDef logic fill:#181b21,stroke:#d95926,color:#f0efec
-    classDef api fill:#181b21,stroke:#199e70,color:#f0efec
-    classDef ui fill:#181b21,stroke:#3987e5,color:#f0efec
+    classDef device fill:#101824,stroke:#27c58a,color:#f5f8fc
+    classDef broker fill:#101824,stroke:#f5b942,color:#f5f8fc
+    classDef logic fill:#101824,stroke:#ff8a5b,color:#f5f8fc
+    classDef api fill:#101824,stroke:#35d09f,color:#f5f8fc
+    classDef ui fill:#101824,stroke:#35a7ff,color:#f5f8fc
     class S device
     class M broker
     class N logic
@@ -124,8 +124,8 @@ flowchart LR
     EP --> OUT[Signal plan to the intersection<br/>+ record to backend]
     OUT --> DB[(MongoDB)] --> WS[WebSocket] --> UI[Dashboard]
 
-    classDef bad fill:#181b21,stroke:#d03b3b,color:#f0efec
-    classDef good fill:#181b21,stroke:#0ca30c,color:#f0efec
+    classDef bad fill:#101824,stroke:#f05261,color:#f5f8fc
+    classDef good fill:#101824,stroke:#27c58a,color:#f5f8fc
     class R,EP bad
     class OUT,UI good
 ```
@@ -241,7 +241,7 @@ city-wide alert for heavy rain, fog or storms.
 
 ## 🖥️ Dashboard
 
-React + Vite, served by nginx. Dark control-room theme. The header shows the live status of the **WebSocket**,
+React + Vite, served by nginx. Dark "FlowSense 2.0" operations theme with a sidebar menu. The header shows the live status of the **WebSocket**,
 **MQTT**, **Node-RED** and **Sensors** connections.
 
 | Page | What you see |
