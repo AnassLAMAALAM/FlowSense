@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="FlowSense — Smart Traffic Management System" width="100%">
+  <img src="assets/banner.svg" alt="FlowSense — Smart Traffic Management System" width="100%">
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@ account, and shows everything on a control-room dashboard.
   </tr>
 </table>
 
-![Control room](docs/screenshots/1-control-room.png)
+![Control room](assets/screenshots/1-control-room.png)
 
 ---
 
@@ -186,7 +186,7 @@ More green → shorter queue → less demand at the next reading: the system bal
 
 Cycle = NS green + EW green + L (8 s). Priority: **🚑 emergency > 🧑‍💻 manual override > 🚦 adaptive**.
 
-![Normal cycle and ambulance cycle](docs/explained/traffic-lights-and-ambulance.png)
+![Normal cycle and ambulance cycle](assets/explained/traffic-lights-and-ambulance.png)
 
 ### 4. When an ambulance comes
 
@@ -196,7 +196,7 @@ hit it. Normal cars must still stop at red. With heavy traffic, 60 s lets about 
 waited gets extra green afterwards. Only the intersection where the ambulance is seen is cleared (a green wave along the
 route is future work). Drivers just see the lights change; operators see a critical alert and a red ring on the map.
 
-![Why the ambulance's direction gets green](docs/explained/ambulance-priority.png)
+![Why the ambulance's direction gets green](assets/explained/ambulance-priority.png)
 
 > **Red light ≠ red on the map.** A red light means "stop, it's the other side's turn". ■ Red on the dashboard map
 > means "this road is jammed (Severe)" — information for the operator, not an order to drivers.
@@ -335,9 +335,9 @@ React + Vite, served by nginx. Dark operations theme with a sidebar menu. The he
 
 | | |
 |---|---|
-| ![Intersections](docs/screenshots/2-intersections.png) | ![Congestion map](docs/3-congestion-map.png) |
-| ![Analytics](docs/screenshots/4-analytics.png) | ![Alerts](docs/screenshots/5-alerts.png) |
-| ![Signal control](docs/screenshots/6-signal-control.png) | ![Swagger](docs/screenshots/7-swagger.png) |
+| ![Intersections](assets/screenshots/2-intersections.png) | ![Congestion map](assets/3-congestion-map.png) |
+| ![Analytics](assets/screenshots/4-analytics.png) | ![Alerts](assets/screenshots/5-alerts.png) |
+| ![Signal control](assets/screenshots/6-signal-control.png) | ![Swagger](assets/screenshots/7-swagger.png) |
 
 ---
 
@@ -453,8 +453,8 @@ FlowSense/
 ├── node-red/              flows.json, functions/*.js, build-flows.js
 ├── backend/               Express API, Socket.IO, Mongoose models, weather service
 ├── frontend/              React dashboard (Vite) + nginx configuration
-├── docs/                  banner, screenshots, explanation images
-└── Documents/             functional and technical reports (PDF), openapi.json
+├── assets/                banner, screenshots, explanation images, UCA logo
+└── documents/             functional and technical reports (PDF), openapi.json
 ```
 
 ---
@@ -463,15 +463,15 @@ FlowSense/
 
 | Document | Content |
 |---|---|
-| [Functional documentation](Documents/FlowSense_Functional_Documentation.pdf) | introduction, stakeholders and roles, requirements, scenarios, business rules, decision logic explained, interface, evaluation, conclusion |
-| [Technical documentation](Documents/FlowSense_Technical_Documentation.pdf) | introduction, architecture, data flow, sensors, MQTT, Node-RED algorithms, data model, API, frontend, deployment, validation, conclusion |
-| [OpenAPI specification](Documents/openapi.json) | machine-readable REST API description (also served at `/api/openapi.json`) |
+| [Functional documentation](documents/FlowSense_Functional_Documentation.pdf) | introduction, stakeholders and roles, requirements, scenarios, business rules, decision logic explained, interface, evaluation, conclusion |
+| [Technical documentation](documents/FlowSense_Technical_Documentation.pdf) | introduction, architecture, data flow, sensors, MQTT, Node-RED algorithms, data model, API, frontend, deployment, validation, conclusion |
+| [OpenAPI specification](documents/openapi.json) | machine-readable REST API description (also served at `/api/openapi.json`) |
 
 ---
 
 ## 🎓 Academic context
 
-<p align="center"><img src="docs/uca-logo.png" alt="Universidad de Cádiz" width="140"></p>
+<p align="center"><img src="assets/uca-logo.png" alt="Universidad de Cádiz" width="140"></p>
 
 | | |
 |---|---|
