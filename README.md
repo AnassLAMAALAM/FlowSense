@@ -145,6 +145,86 @@ Score = 0.45 × occupancy + 0.35 × speed loss + 0.20 × queue pressure (+ 0.10 
 
 ---
 
+## 🧮 How the decisions are made
+
+### 1. How busy is one direction? (congestion score)
+
+Each measurement is turned into a number from **0 (empty road)** to **1 (blocked)**, then the three are mixed.
+Example: north side of INT-002, 3 lanes, normal speed 50 km/h.
+
+| Measurement | Value | 0 – 1 |
+|---|---|---|
+| Occupancy (road covered by cars) | 63 % | **0.63** |
+| Speed loss (1 − speed / normal speed) | 21.4 km/h instead of 50 | **0.57** |
+| Queue pressure (cars waiting / places) | 38 cars / ≈ 55 places (3 lanes × 120 m ÷ 6.5 m) | **0.69** |
+
+```
+score = 0.45 × 0.63 + 0.35 × 0.57 + 0.20 × 0.69 = 0.62  →  ◆ Heavy (warning alert)
+```
+
+### 2. How long is each green? (Webster's method)
+
+The busier direction gets more green. Two phases: north–south (NS) and east–west (EW).
+
+```
+demand = flow + queue × 3600 / 90            NS = 900 + 10 × 40 = 1300   EW = 700
+y      = demand / (1800 × lanes)             y_NS = 0.36   y_EW = 0.19   Y = 0.55
+cycle  = (1.5 × L + 5) / (1 − Y)             (12 + 5) / 0.45 ≈ 38 s → minimum 40 s   (L = 8 s lost time)
+greens = (cycle − L) × y / Y                 NS ≈ 21 s   EW ≈ 11 s   (never below 10 s)
+smooth = old + 0.3 × (new − old)             30 s → ≈ 27 s, no sudden jumps
+```
+
+More green → shorter queue → less demand at the next reading: the system balances itself.
+
+### 3. Green, yellow and all-red
+
+| Light | Duration | Calculated? |
+|---|---|---|
+| 🟢 Green — go | Webster, min 10 s | **yes**, every 5 s |
+| 🟡 Yellow — stop if you safely can | 3 s | no, fixed |
+| 🔴 All-red — everybody waits, the last car clears the crossing | 2 s | no, fixed |
+
+Cycle = NS green + EW green + L (8 s). Priority: **🚑 emergency > 🧑‍💻 manual override > 🚦 adaptive**.
+
+![Normal cycle and ambulance cycle](docs/explained/traffic-lights-and-ambulance.png)
+
+### 4. When an ambulance comes
+
+On the **same 5-second tick** in which the ambulance is detected, its direction gets **60 s of green** and the other
+direction stays **red**. The green empties the road in front of the ambulance; the red stops the cross traffic that could
+hit it. Normal cars must still stop at red. With heavy traffic, 60 s lets about 30 cars per lane leave; the side that
+waited gets extra green afterwards. Only the intersection where the ambulance is seen is cleared (a green wave along the
+route is future work). Drivers just see the lights change; operators see a critical alert and a red ring on the map.
+
+![Why the ambulance's direction gets green](docs/explained/ambulance-priority.png)
+
+> **Red light ≠ red on the map.** A red light means "stop, it's the other side's turn". ■ Red on the dashboard map
+> means "this road is jammed (Severe)" — information for the operator, not an order to drivers.
+
+### 5. When things are recalculated
+
+| When | What |
+|---|---|
+| Every **5 s** (1 tick = 5 simulated minutes) | new reading → validation → score and level → Webster → emergency check → save + push to dashboard |
+| About **30 s** (6 ticks) | lights reach the new target (30 % closer each tick) |
+| Every **15 s** | control room and analytics charts reload |
+| Every **10 min** | live weather from Open-Meteo |
+| **Instantly** | alert when a level changes · emergency priority · manual override (until released) |
+| After **30 days** | old readings deleted (MongoDB TTL) |
+
+### 6. Users and roles
+
+| Role | What they do | Screens |
+|---|---|---|
+| 🧑‍💻 Traffic operator | watches traffic live, acknowledges alerts, overrides lights | Control room, Map, Alerts, Signal control |
+| 📈 Traffic engineer / analyst | studies history, compares fixed vs adaptive | Analytics, Intersections |
+| 🚑 Emergency services | no dashboard — vehicles detected automatically | — |
+| 🛠️ Administrator | runs the system, checks health, uses the API | System health, Swagger, Node-RED |
+
+Roles are conceptual: there is no login in version 1.0.
+
+---
+
 ## 🧩 Components
 
 <details open>
@@ -241,7 +321,7 @@ city-wide alert for heavy rain, fog or storms.
 
 ## 🖥️ Dashboard
 
-React + Vite, served by nginx. Dark "FlowSense 2.0" operations theme with a sidebar menu. The header shows the live status of the **WebSocket**,
+React + Vite, served by nginx. Dark operations theme with a sidebar menu. The header shows the live status of the **WebSocket**,
 **MQTT**, **Node-RED** and **Sensors** connections.
 
 | Page | What you see |
@@ -373,12 +453,25 @@ FlowSense/
 ├── node-red/              flows.json, functions/*.js, build-flows.js
 ├── backend/               Express API, Socket.IO, Mongoose models, weather service
 ├── frontend/              React dashboard (Vite) + nginx configuration
-└── docs/                  banner, screenshots
+├── docs/                  banner, screenshots, explanation images
+└── Documents/             functional and technical reports (PDF), openapi.json
 ```
 
 ---
 
+## 📄 Documentation
+
+| Document | Content |
+|---|---|
+| [Functional documentation](Documents/FlowSense_Functional_Documentation.pdf) | introduction, stakeholders and roles, requirements, scenarios, business rules, decision logic explained, interface, evaluation, conclusion |
+| [Technical documentation](Documents/FlowSense_Technical_Documentation.pdf) | introduction, architecture, data flow, sensors, MQTT, Node-RED algorithms, data model, API, frontend, deployment, validation, conclusion |
+| [OpenAPI specification](Documents/openapi.json) | machine-readable REST API description (also served at `/api/openapi.json`) |
+
+---
+
 ## 🎓 Academic context
+
+<p align="center"><img src="docs/uca-logo.png" alt="Universidad de Cádiz" width="140"></p>
 
 | | |
 |---|---|
@@ -386,7 +479,8 @@ FlowSense/
 | **University** | Universidad de Cádiz (UCA) · Escuela Superior de Ingeniería (ESI) |
 | **Itinerary** | *Transformación Digital: Internet de las Cosas y Big Data* |
 | **Course** | Internet de las cosas (Internet of Things), practical assignment |
-| **Student** | Anass Lamaalam |
+| **Students** | Anass Lamaalam<br>Constança Fernandes |
+| **Lecturers** | Guadalupe Ortiz<br>Andrés Muñoz |
 | **Academic year** | 2026–2027 |
 
 The master is a one-year official research master (60 ECTS): a common module (R&D projects, research methodology), a
