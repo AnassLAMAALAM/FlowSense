@@ -13,12 +13,20 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/AnassLAMAALAM/FlowSense/actions/workflows/deploy.yml"><img alt="CI/CD" src="https://github.com/AnassLAMAALAM/FlowSense/actions/workflows/deploy.yml/badge.svg?branch=dev"></a>
+  <img alt="GitHub Actions" src="https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088ff?style=flat-square">
+  <img alt="AWS EC2" src="https://img.shields.io/badge/hosted%20on-Amazon%20EC2-ff9900?style=flat-square">
+  <a href="http://16.171.47.208:8080"><img alt="Live demo" src="https://img.shields.io/badge/live-demo-27c58a?style=flat-square"></a>
+</p>
+
+<p align="center">
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-architecture">Architecture</a> ·
   <a href="#-dashboard">Dashboard</a> ·
   <a href="#-rest-api">API</a> ·
   <a href="#-results">Results</a> ·
   <a href="#-demo-scenarios">Demo</a> ·
+  <a href="#-cicd-and-deployment">CI/CD &amp; deployment</a> ·
   <a href="#-configuration">Configuration</a>
 </p>
 
@@ -405,6 +413,59 @@ docker compose logs -f backend
 
 ---
 
+## ☁️ CI/CD and deployment
+
+FlowSense is built, tested and deployed automatically with **GitHub Actions**, and runs on an **Amazon EC2** virtual
+machine in Stockholm (`eu-north-1`), next to another application (Vevora).
+
+| | |
+|---|---|
+| 🌍 **Live dashboard** | http://16.171.47.208:8080 |
+| 📘 **Live API docs** | http://16.171.47.208:8080/api/docs |
+| ⚙️ **Pipeline** | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) · “Test, build and deploy (dev)” |
+| 📋 **Planning** | [GitHub Projects Kanban board](https://github.com/users/AnassLAMAALAM/projects/8) |
+| 📖 **Server setup** | [DEPLOY.md](DEPLOY.md) |
+
+### How a change reaches production
+
+```mermaid
+flowchart LR
+    T[Ticket on the<br/>Kanban board] --> B[Feature branch]
+    B --> PR[Pull request<br/>into dev]
+    PR -->|CI| TEST[test job]
+    TEST -->|merge into dev| BUILD[build-and-push<br/>4 images in parallel]
+    BUILD --> REG[(ghcr.io<br/>tag = commit SHA)]
+    REG --> DEP[deploy job<br/>over SSH]
+    DEP --> EC2[Amazon EC2<br/>:8080]
+    EC2 -.->|ticket → Done| T
+```
+
+| Job | Runs on | What it does |
+|---|---|---|
+| `test` | every pull request into `dev` or `main`, and every push to `dev` | backend `npm ci` + `node --check`, dashboard `npm run build`, Node-RED `flows.json` check, sensors Python syntax check |
+| `build-and-push` | push to `dev` or manual run | builds the backend, dashboard, Node-RED and sensors images in parallel (cached) and pushes them to `ghcr.io` as `latest` and `<commit SHA>` |
+| `deploy` | after `build-and-push` | copies `docker-compose.prod.yml` and `mosquitto.conf` over SSH, creates `.env` on the first run, then `docker compose pull` + `up -d` |
+
+**Why it is built this way**
+
+- **CI on every pull request.** Broken code is caught before it reaches `dev`; the result shows on the PR.
+- **The server never builds.** Images are built on GitHub’s runners, so the small VM only pulls them.
+- **Versioned releases.** Every image carries its commit, so the server runs exactly what was merged, and re-running
+  an older green run rolls back to that version.
+- **No secrets in the code.** The workflow reads `EC2_HOST`, `EC2_USER` and `EC2_SSH_KEY` from encrypted repository
+  secrets; the server generates its own `.env` (ingest token, Node-RED secret).
+- **Only the dashboard is public.** nginx serves `/`, `/api` and `/socket.io` on port 8080; MongoDB, MQTT and the
+  backend stay on the internal Docker network, and the Node-RED editor listens on `127.0.0.1:1880` (open it with
+  `ssh -L 1880:localhost:1880`).
+- **Memory limits.** `docker-compose.prod.yml` caps every container (MongoDB 500 MB, backend and Node-RED 256 MB, …)
+  so FlowSense fits on a small instance shared with another app.
+
+> [!CAUTION]
+> Never commit private keys. The deploy key lives only in the `EC2_SSH_KEY` secret and on your own machine;
+> `.gitignore` blocks `flowsense_deploy*`, `*.pem` and `id_*` files.
+
+---
+
 ## ⚙️ Configuration
 
 All settings are environment variables in `docker-compose.yml`.
@@ -446,7 +507,10 @@ For Node-RED, import `node-red/flows.json` with `MQTT_HOST=localhost` and `BACKE
 
 ```
 FlowSense/
-├── docker-compose.yml     all services
+├── .github/workflows/     deploy.yml: CI/CD pipeline (test → build → deploy)
+├── docker-compose.yml     all services (local development)
+├── docker-compose.prod.yml  production on EC2: prebuilt images, memory limits
+├── DEPLOY.md              server setup and secrets for the EC2 deployment
 ├── start.bat              build + start on Windows, output saved to start.log
 ├── sensors/               Python virtual sensors (simulator.py)
 ├── mosquitto/             MQTT broker configuration
@@ -464,7 +528,8 @@ FlowSense/
 | Document | Content |
 |---|---|
 | [Functional documentation](documents/FlowSense_Functional_Documentation.pdf) | introduction, stakeholders and roles, requirements, scenarios, business rules, decision logic explained, interface, evaluation, conclusion |
-| [Technical documentation](documents/FlowSense_Technical_Documentation.pdf) | introduction, architecture, data flow, sensors, MQTT, Node-RED algorithms, data model, API, frontend, deployment, validation, conclusion |
+| [Technical documentation](documents/FlowSense_Technical_Documentation.pdf) | introduction, architecture, data flow, sensors, MQTT, Node-RED algorithms, data model, API, frontend, deployment, environments, CI/CD pipeline with GitHub Actions, hosting on Amazon EC2, source control and project management, security and validation, conclusion |
+| [Deployment guide](DEPLOY.md) | EC2 server setup, GitHub secrets, ports, how the pipeline deploys |
 | [OpenAPI specification](documents/openapi.json) | machine-readable REST API description (also served at `/api/openapi.json`) |
 
 ---
@@ -493,6 +558,8 @@ with storage, real-time visualisation, and the evaluation of an adaptive control
 
 <br>
 
+Tickets are tracked on the [GitHub Projects Kanban board](https://github.com/users/AnassLAMAALAM/projects/8).
+
 | Ticket | Delivered by |
 |---|---|
 | ST-1 Docker skeleton | `docker-compose.yml`, all Dockerfiles |
@@ -503,5 +570,6 @@ with storage, real-time visualisation, and the evaluation of an adaptive control
 | ST-18 End-to-end testing | full chain checked: sensors → MQTT → Node-RED → API → MongoDB → WebSocket → dashboard |
 | ST-19 Documentation | this README, diagrams, screenshots |
 | Weather (Open-Meteo, Jerez) | `backend/src/services/weather.js`, `frontend/src/components/WeatherTile.jsx` |
+| CI/CD and cloud deployment | `.github/workflows/deploy.yml`, `docker-compose.prod.yml`, `DEPLOY.md` |
 
 </details>
