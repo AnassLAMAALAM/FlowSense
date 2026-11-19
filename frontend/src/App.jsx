@@ -8,6 +8,9 @@ import Analytics from './pages/Analytics';
 import Alerts from './pages/Alerts';
 import Signals from './pages/Signals';
 
+// Release version, injected at build time from package.json ("1.1.0" is shown as "v1.1").
+const APP_VERSION = (typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '').replace(/\.0$/, '');
+
 const PAGES = [
   { key: 'control', label: 'Control room', short: 'Live network', icon: 'grid', Comp: ControlRoom },
   { key: 'overview', label: 'Intersections', short: 'Junction status', icon: 'cross', Comp: Overview },
@@ -46,7 +49,7 @@ export default function App() {
       <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
         <div className="brand brand-side">
           <div className="flow-logo" aria-hidden="true"><span /><span /><span /></div>
-          <div><h1>FlowSense</h1><small>Urban mobility OS</small></div>
+          <div><h1>FlowSense <span className="version-tag" title={`FlowSense version ${APP_VERSION}`}>v{APP_VERSION}</span></h1><small>Urban mobility OS</small></div>
         </div>
 
         <div className="side-label">OPERATIONS</div>

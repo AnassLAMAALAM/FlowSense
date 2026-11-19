@@ -292,6 +292,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .brand-side { padding: 2px 8px 24px; gap: 12px; }
 .brand-side h1 { font-size: 18px; letter-spacing: -.02em; }
 .brand-side small { font-size: 11px; letter-spacing: .04em; }
+.version-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; border: 1px solid rgba(53,167,255,.35); background: rgba(53,167,255,.12); color: #8fc8ff; font-size: 10px; font-weight: 600; letter-spacing: .02em; vertical-align: middle; }
 .flow-logo { width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(145deg, #1b8fe8, #36d4ba); padding: 8px; display: flex; align-items: end; gap: 3px; box-shadow: 0 8px 26px rgba(53,167,255,.22); }
 .flow-logo span { display: block; flex: 1; border-radius: 3px; background: #fff; opacity: .95; }
 .flow-logo span:nth-child(1) { height: 45%; } .flow-logo span:nth-child(2) { height: 100%; } .flow-logo span:nth-child(3) { height: 70%; }
