@@ -1,0 +1,169 @@
+name: Test, build and deploy (dev)
+
+# Same pipeline as Vevora (EventBookingPlatform): test -> build images -> push to ghcr.io -> SSH into the
+# same VM and restart the stack. FlowSense lives next to Vevora on that VM, in its own folder
+# (~/flowsense), its own compose project ("flowsense") and on its own port (8080) - Vevora keeps 80/443.
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev, main]
+  # Manual run from the Actions tab. Deploys dev like a push does, and can optionally wipe the
+  # MongoDB data first. Off by default.
+  workflow_dispatch:
+    inputs:
+      reset_database:
+        description: "DANGER: delete the FlowSense MongoDB data (readings, alerts, signal history) and start fresh"
+        type: boolean
+        default: false
+      confirm:
+        description: "To reset, type DELETE-ALL-DATA here as well"
+        type: string
+        default: ""
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Backend - install and syntax-check every source file
+        working-directory: backend
+        run: |
+          npm ci --omit=dev
+          find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Dashboard - build
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Node-RED - flows.json is valid JSON and in sync with functions/
+        working-directory: node-red
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('flows.json','utf8'))"
+          cp flows.json /tmp/flows.committed.json
+          node build-flows.js
+          if ! diff -q flows.json /tmp/flows.committed.json >/dev/null; then
+            echo "::warning::flows.json differs from what build-flows.js generates - run 'node build-flows.js' and commit it"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sensors - syntax check
+        run: python -m py_compile sensors/simulator.py
+
+  build-and-push:
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_owner: ${{ steps.owner.outputs.lower }}
+    strategy:
+      matrix:
+        include:
+          - name: flowsense-backend
+            context: backend
+          - name: flowsense-dashboard
+            context: frontend
+          - name: flowsense-node-red
+            context: node-red
+          - name: flowsense-sensors
+            context: sensors
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase the image owner (registry names must be lowercase)
+        id: owner
+        run: echo "lower=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/${{ matrix.name }}:latest
+            ${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/${{ matrix.name }}:${{ github.sha }}
+          # One cache per image, otherwise the four builds overwrite each other's cache
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same approach as Vevora: stream the config files over plain ssh ("cat > file").
+      # The same secrets as Vevora's repo (EC2_HOST / EC2_USER / EC2_SSH_KEY) - they must be added
+      # to this repo too, GitHub secrets are per repository.
+      - name: Copy the prod compose file and mosquitto.conf to the server
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          REMOTE: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+          REMOTE_DIR: /home/${{ secrets.EC2_USER }}/flowsense
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh_remote() { ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes "$REMOTE" "$@"; }
+          # Only stopped containers / unused images are removed; Vevora's running containers and all volumes are untouched.
+          ssh_remote "docker container prune -f && docker image prune -af && docker builder prune -af && df -h / && free -m"
+          ssh_remote "mkdir -p '$REMOTE_DIR/mosquitto'"
+          ssh_remote "cat > '$REMOTE_DIR/docker-compose.prod.yml'" < docker-compose.prod.yml
+          ssh_remote "cat > '$REMOTE_DIR/mosquitto/mosquitto.conf'" < mosquitto/mosquitto.conf
+          ssh_remote "ls -lR '$REMOTE_DIR'"
+
+      - name: Pull the new images and restart the stack
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd "/home/${{ secrets.EC2_USER }}/flowsense"
+            # First deploy: create .env with random secrets so nothing has to be set up by hand.
+            if [ ! -f .env ]; then
+              echo "Creating .env with fresh random secrets"
+              printf 'INGEST_TOKEN=%s\nNODE_RED_CREDENTIAL_SECRET=%s\nDASHBOARD_PORT=8080\n' \
+                "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" > .env
+              chmod 600 .env
+            fi
+            export REGISTRY=ghcr.io
+            export IMAGE_OWNER=${{ needs.build-and-push.outputs.image_owner }}
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose -f docker-compose.prod.yml --env-file .env pull
+            if [ "${{ github.event_name == 'workflow_dispatch' && inputs.reset_database && inputs.confirm == 'DELETE-ALL-DATA' }}" = "true" ]; then
+              echo "RESETTING THE FLOWSENSE DATABASE"
+              docker compose -f docker-compose.prod.yml --env-file .env down
+              docker volume rm -f flowsense_mongo-data
+            fi
+            docker compose -f docker-compose.prod.yml --env-file .env up -d --remove-orphans
+            docker compose -f docker-compose.prod.yml --env-file .env ps
+            docker image prune -af
