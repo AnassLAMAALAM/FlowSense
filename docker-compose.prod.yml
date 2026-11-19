@@ -1,0 +1,111 @@
+# FlowSense production stack. Runs on the SAME VM as Vevora (EventBookingPlatform):
+#   - Vevora:    ports 80 / 443   (~/eventbookingplatform, compose project "eventbookingplatform")
+#   - FlowSense: port 8080        (~/flowsense,           compose project "flowsense")
+# Only the dashboard is published to the internet. Its nginx proxies /api and /socket.io to the backend,
+# so the backend, MongoDB and Mosquitto stay private on the compose network. Node-RED's editor is
+# bound to 127.0.0.1 only - open it through an SSH tunnel (see DEPLOY.md).
+# The VM never builds anything; CI pushes prebuilt images to ghcr.io and this file only pulls them.
+
+name: flowsense
+
+# Cap each container's log at 3 x 10 MB (Docker's default never rotates).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mosquitto:
+    logging: *default-logging
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    # Not published: the broker allows anonymous access, so it must not be reachable from the internet.
+    expose: ["1883", "9001"]
+    mem_limit: 64m
+
+  mongo:
+    logging: *default-logging
+    image: mongo:7
+    restart: unless-stopped
+    # Smallest WiredTiger cache MongoDB allows - the VM is shared with Vevora.
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    volumes: [mongo-data:/data/db]
+    expose: ["27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 90s
+    mem_limit: 500m
+
+  backend:
+    logging: *default-logging
+    image: ${REGISTRY}/${IMAGE_OWNER}/flowsense-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGO_URL: mongodb://mongo:27017/smart_traffic
+      MQTT_URL: mqtt://mosquitto:1883
+      CORS_ORIGIN: "*"
+      INGEST_TOKEN: ${INGEST_TOKEN}
+      WEATHER_ENABLED: "true"
+      WEATHER_CITY: Jerez de la Frontera
+      WEATHER_LAT: "36.6866"
+      WEATHER_LON: "-6.1372"
+      WEATHER_INTERVAL_MIN: "10"
+    expose: ["4000"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    mem_limit: 256m
+
+  node-red:
+    logging: *default-logging
+    image: ${REGISTRY}/${IMAGE_OWNER}/flowsense-node-red:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mosquitto
+      BACKEND_URL: http://backend:4000
+      INGEST_TOKEN: ${INGEST_TOKEN}
+      NODE_RED_CREDENTIAL_SECRET: ${NODE_RED_CREDENTIAL_SECRET}
+      TZ: Europe/Madrid
+    # Editor only on the VM's loopback: reach it with  ssh -L 1880:localhost:1880 ubuntu@<vm>
+    ports: ["127.0.0.1:1880:1880"]
+    depends_on: [mosquitto, backend]
+    mem_limit: 256m
+
+  sensors:
+    logging: *default-logging
+    image: ${REGISTRY}/${IMAGE_OWNER}/flowsense-sensors:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      INTERVAL_SEC: 5
+      SIM_TIME_SCALE: 60
+      EMERGENCY_PROB: 0.01
+      INCIDENT_PROB: 0.0015
+      WEATHER: clear
+    depends_on: [mosquitto, node-red]
+    mem_limit: 96m
+
+  dashboard:
+    logging: *default-logging
+    image: ${REGISTRY}/${IMAGE_OWNER}/flowsense-dashboard:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    # The only public port. 8080 by default (Vevora already uses 80/443); change DASHBOARD_PORT in .env if needed.
+    ports: ["${DASHBOARD_PORT:-8080}:80"]
+    depends_on: [backend]
+    mem_limit: 64m
+
+volumes:
+  mosquitto-data:
+  mongo-data:
