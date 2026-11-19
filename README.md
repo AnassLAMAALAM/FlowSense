@@ -16,6 +16,7 @@
   <a href="https://github.com/AnassLAMAALAM/FlowSense/actions/workflows/deploy.yml"><img alt="CI/CD" src="https://github.com/AnassLAMAALAM/FlowSense/actions/workflows/deploy.yml/badge.svg?branch=dev"></a>
   <img alt="GitHub Actions" src="https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088ff?style=flat-square">
   <img alt="AWS EC2" src="https://img.shields.io/badge/hosted%20on-Amazon%20EC2-ff9900?style=flat-square">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.1-35a7ff?style=flat-square">
   <a href="http://16.171.47.208:8080"><img alt="Live demo" src="https://img.shields.io/badge/live-demo-27c58a?style=flat-square"></a>
 </p>
 
@@ -531,6 +532,25 @@ FlowSense/
 | [Technical documentation](documents/FlowSense_Technical_Documentation.pdf) | introduction, architecture, data flow, sensors, MQTT, Node-RED algorithms, data model, API, frontend, deployment, environments, CI/CD pipeline with GitHub Actions, hosting on Amazon EC2, source control and project management, security and validation, conclusion |
 | [Deployment guide](DEPLOY.md) | EC2 server setup, GitHub secrets, ports, how the pipeline deploys |
 | [OpenAPI specification](documents/openapi.json) | machine-readable REST API description (also served at `/api/openapi.json`) |
+
+---
+
+## 📝 Changelog
+
+### v1.1 · November 2026
+- **CI/CD with GitHub Actions**: tests on every pull request; images built in parallel, pushed to `ghcr.io` and
+  deployed automatically on every merge into `dev` ([`deploy.yml`](.github/workflows/deploy.yml)).
+- **Cloud hosting on Amazon EC2** (Stockholm) with `docker-compose.prod.yml`: only the dashboard is public,
+  every container has a memory limit, and the server creates its own secrets ([DEPLOY.md](DEPLOY.md)).
+- **Project management on GitHub**: repository, pull requests and a GitHub Projects Kanban board.
+- **Documentation 1.1**: the technical documentation gains sections 10.1–10.4 (environments, CI/CD pipeline, EC2
+  hosting, source control and project management) and updated security and testing sections; both documents now
+  show the dashboards with the live map of Jerez.
+- **Security**: SSH key files removed from the repository and blocked in `.gitignore`.
+
+### v1.0 · November 2026
+- First complete release: sensors, MQTT, Node-RED edge processing, backend and MongoDB, real-time dashboard,
+  adaptive signals with emergency priority, Open-Meteo weather, functional and technical documentation.
 
 ---
 
